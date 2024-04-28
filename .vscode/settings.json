@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "spi.h": "c",
+        "stdint.h": "c",
+        "icm42688.h": "c",
+        "adc.h": "c",
+        "icm42688_config.h": "c",
+        "icm42688_registers.h": "c",
+        "device.h": "c"
+    }
+}
