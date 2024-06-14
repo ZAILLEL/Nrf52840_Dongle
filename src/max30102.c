@@ -1,4 +1,8 @@
-#include "max30102_for_stm32_hal.h"
+#include "max30102.h"
+
+#include <zephyr.h>
+#include <device.h>
+#include <drivers/i2c.h>
 #include <stdio.h>
 
 #ifdef __cplusplus
@@ -18,51 +22,37 @@ __weak void max30102_plot(uint32_t ir_sample, uint32_t red_sample)
     UNUSED(red_sample);
 }
 
-/**
- * @brief MAX30102 initiation function.
- *
- * @param obj Pointer to max30102_t object instance.
- * @param hi2c Pointer to I2C object handle
- */
-void max30102_init(max30102_t *obj, I2C_HandleTypeDef *hi2c)
+void max30102_init(struct max30102 *obj, const struct device *i2c_dev)
 {
-    obj->_ui2c = hi2c;
+    obj->i2c_dev = i2c_dev;
     obj->_interrupt_flag = 0;
     memset(obj->_ir_samples, 0, MAX30102_SAMPLE_LEN_MAX * sizeof(uint32_t));
     memset(obj->_red_samples, 0, MAX30102_SAMPLE_LEN_MAX * sizeof(uint32_t));
 }
 
-/**
- * @brief Write buffer of buflen bytes to a register of the MAX30102.
- *
- * @param obj Pointer to max30102_t object instance.
- * @param reg Register address to write to.
- * @param buf Pointer containing the bytes to write.
- * @param buflen Number of bytes to write.
- */
-void max30102_write(max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
+
+void max30102_write(struct max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
 {
-    uint8_t *payload = (uint8_t *)malloc((buflen + 1) * sizeof(uint8_t));
-    *payload = reg;
-    if (buf != NULL && buflen != 0)
+    uint8_t *payload = (uint8_t *)k_malloc((buflen + 1) * sizeof(uint8_t));
+    payload[0] = reg;
+    if (buf != NULL && buflen != 0) {
         memcpy(payload + 1, buf, buflen);
-    HAL_I2C_Master_Transmit(obj->_ui2c, MAX30102_I2C_ADDR << 1, payload, buflen + 1, MAX30102_I2C_TIMEOUT);
-    free(payload);
+    }
+    
+    int ret = i2c_write(obj->i2c_dev, payload, buflen + 1, MAX30102_I2C_ADDR);
+    if (ret) {
+        printk("I2C write error: %d\n", ret);
+    }
+    
+    k_free(payload);
 }
 
-/**
- * @brief Read buflen bytes from a register of the MAX30102 and store to buffer.
- *
- * @param obj Pointer to max30102_t object instance.
- * @param reg Register address to read from.
- * @param buf Pointer to the array to write to.
- * @param buflen Number of bytes to read.
- */
-void max30102_read(max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
+void max30102_read(struct max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
 {
-    uint8_t reg_addr = reg;
-    HAL_I2C_Master_Transmit(obj->_ui2c, MAX30102_I2C_ADDR << 1, &reg_addr, 1, MAX30102_I2C_TIMEOUT);
-    HAL_I2C_Master_Receive(obj->_ui2c, MAX30102_I2C_ADDR << 1, buf, buflen, MAX30102_I2C_TIMEOUT);
+    int ret = i2c_write_read(obj->i2c_dev, MAX30102_I2C_ADDR, &reg, 1, buf, buflen);
+    if (ret) {
+        printk("I2C read error: %d\n", ret);
+    }
 }
 
 /**
@@ -348,7 +338,6 @@ void max30102_set_fifo_config(max30102_t *obj, max30102_smp_ave_t smp_ave, uint8
 
 /**
  * @brief Clear all FIFO pointers in the sensor.
- *
  * @param obj Pointer to max30102_t object instance.
  */
 void max30102_clear_fifo(max30102_t *obj)
@@ -404,6 +393,10 @@ void max30102_read_temp(max30102_t *obj, int8_t *temp_int, uint8_t *temp_frac)
 {
     max30102_read(obj, MAX30102_DIE_TINT, (uint8_t *)temp_int, 1);
     max30102_read(obj, MAX30102_DIE_TFRAC, temp_frac, 1);
+	
+	#ifdef DEBUG_PRINT
+	printk("Temp = %d \r\n", temp_int);
+	#endif
 }
 
 #ifdef __cplusplus
